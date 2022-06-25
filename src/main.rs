@@ -1,33 +1,12 @@
-
-use minifb::{MouseMode, Window, WindowOptions, ScaleMode, Scale};
-use raqote::{DrawTarget, SolidSource, Source, DrawOptions, PathBuilder, Point as OtherPoint, Transform, StrokeStyle, Color};
-
+use std::{f64::consts::PI, time::Duration};
+use minifb::{Window, WindowOptions};
+use raqote::{DrawTarget, SolidSource, Source, DrawOptions, PathBuilder, Color};
+use nalgebra::{Matrix3, Vector3};
 
 
 const WIDTH: usize = 1000;
 const HEIGHT: usize = 1000;
 
-#[derive(Copy, Clone, Debug)]
-struct Point {
-    x: f32,
-    y: f32,
-    z: f32
-}
-
-impl Point {
-    fn norm(&self) -> Point{
-        let mut pt: Point = Point {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0
-        };
-        let length: f32 =  (self.x*self.x + self.y*self.y + self.z*self.z).sqrt();
-        pt.x = self.x/length;
-        pt.y = self.y/length;
-        pt.z = self.z/length;
-        return pt
-    }
-}
 #[derive(Copy, Clone, Debug)]
 struct Face {
     color: Color,
@@ -36,6 +15,7 @@ struct Face {
 
 fn main() {
 
+    let ten_millis = Duration::from_millis(20);
 
     let mut window = Window::new("Raqote", WIDTH, HEIGHT, WindowOptions {
         ..WindowOptions::default()
@@ -43,26 +23,35 @@ fn main() {
 
     let mut dt = DrawTarget::new(WIDTH as i32, HEIGHT as i32);
 
-    let a: f32 = 100.0; 
+    let a = 100.0;
 
-    let pt = Point {
-        x: 0.0,
-        y: 0.0,
-        z: 0.0
-    };
+    let mut dr:Vec<f64> = vec![2.0, 1.2, PI/4.0];
+    let mut rg:Vector3<f64> = Vector3::new(500.0, 500.0, 0.0);
 
-    let dg: Point = Point { x: 1.0, y: 0.0, z: 0.0 };
-    let dr: Point = Point { x: 1.0, y: 0.0, z: 0.0 };
-    let rg: Point = Point { x: 500.0, y: 700.0, z: 0.0 };
-    let mut points: [Point;8] = [pt;8];
+    let mut ca:f64 = dr[2].cos();
+    let mut sa:f64 = dr[2].sin();
+    let mut cb:f64 = dr[1].cos();
+    let mut sb:f64 = dr[1].sin();
+    let mut cg:f64 = dr[0].cos();
+    let mut sg:f64 = dr[0].sin();
+
+
+    let mut m:Matrix3<f64> = Matrix3::new(
+        ca*cb, ca*sb*sg - sa*cg, ca*sb*cg + sa*sg, 
+        sa*cb, sa*sb*sg + ca*cg, sa*sb*cg - ca*sg, 
+        -sb, cb*sg, cb*cg);
+
+    let mut p: Vector3<f64> = Vector3::new(1.0, 0.0, 0.0);
+
+    let mut points = Vec::new();
 
     const BIT_MASK: [u8; 8] = [1, 2, 4, 8, 16, 32, 64, 128];
 
-
-    for i in 0..8 {
-        points[i].x = (-1.0 + 2.0*(((i as u8) & BIT_MASK[0]) as f32)) * a;
-        points[i].y = (-1.0 + 2.0*(((i as u8) & BIT_MASK[1]) as f32/2.0)) * a;
-        points[i].z = (-1.0 + 2.0*(((i as u8) & BIT_MASK[2]) as f32/4.0)) * a;
+    for i in 0u8..8 {
+        p[0] = (-1.0 + 2.0*((i & BIT_MASK[0])) as f64) * a;
+        p[1] = (-1.0 + 2.0*((i & BIT_MASK[1])/2) as f64) * a;
+        p[2] = (-1.0 + 2.0*((i & BIT_MASK[2])/4) as f64) * a;
+        points.push(p);
     }
 
     let sfaceit = Face {
@@ -83,32 +72,39 @@ fn main() {
     faces[5].color = Color::new(255, 255, 255, 0);
     faces[5].pts = [3, 1, 5, 7];
 
+    let mut r = Vector3::new(0.0, 0.0, 0.0);
+    let mut rs: Vec<Vector3<f64>> = vec![r;8];
 
-// For printing stuff
-println!("Punkt 3 normaliserad {}", points[3].norm().x);
-/*
+/*     
     for i in 0..8{
-        println!("Punkt {}", i);
-        println!("x = {0}, y = {1}, z = {2}", (points[i].x) as f32 + 100.0, (points[i].y) as f32 + 100.0, (points[i].z) as f32 + 100.0,);
-       println!("x = {0}, y = {1}", points[faces[0].pts[i]].x, points[faces[0].pts[i]].y);
-
-        println!("{}",(faces[0].pts[i]));
-
-        println!("{}, {}, {}",points[i].x, points[i].y, points[i].z);
+        r = rg + m*points[i];
+        pts = rg + points[i];
+        println!("x = {}  , x = {}", pts[0], r[0]);
+        println!("y = {}  , y = {}", pts[1], r[1]);
+        println!("z = {}  , z = {}", pts[2], r[2]);    
+        println!("Hello, world!");    
     }
 */
 
+
     loop {
-// Find "closest" corner
+        // Find out if collision occured
+        
+    // Find "closest" corner
         let mut index: usize = 0;
-        let mut closest: f32 = points[index].z;
+        for i in 0..8{
+            r = rg + m*points[i];
+            rs[i] = r;
+        }
+
+        let mut closest: f64 = rs[index][2];
         for i in 1..8{
-            if points[i].z < closest { 
-                closest = points[i].z;
+            if rs[i][2] < closest { 
+                closest = rs[i][2];
                 index = i;
             }
         }
-// Find closest faces. ie the faces that holds corners with index i
+    // Find closest faces. ie the faces that holds corners with index i
         let mut corners = Vec::new();
 
         for i in 0.. 6 {
@@ -121,29 +117,49 @@ println!("Punkt 3 normaliserad {}", points[3].norm().x);
         for i in 0..3{
             let mut pb = PathBuilder::new();
 
-            pb.move_to((points[faces[corners[i]].pts[0]].x) as f32 + rg.x, (points[faces[corners[i]].pts[0]].y) as f32 + rg.y);
+            pb.move_to((rs[faces[corners[i]].pts[0]][0]) as f32, (rs[faces[corners[i]].pts[0]][1]) as f32);
             for j in 1..4 {
-                pb.line_to((points[faces[corners[i]].pts[j]].x) as f32 + rg.x, (points[faces[corners[i]].pts[j]].y) as f32 + rg.y);
+                pb.line_to((rs[faces[corners[i]].pts[j]][0]) as f32, (rs[faces[corners[i]].pts[j]][1]) as f32);
 
             }               
             let path = pb.finish();
             dt.fill(&path, &Source::Solid(SolidSource::from_unpremultiplied_argb(0xff, faces[corners[i]].color.r(), faces[corners[i]].color.g(), faces[corners[i]].color.b())), &DrawOptions::new());
             window.update_with_buffer(dt.get_data(), WIDTH, HEIGHT).unwrap();
         }
-/*       
+    /*       
 
-        let mut pb = PathBuilder::new();
+            let mut pb = PathBuilder::new();
 
-        pb.move_to((points[faces[4].pts[0]].x) as f32 + rg.x, (points[faces[4].pts[0]].y) as f32 + rg.y);
-        pb.line_to((points[faces[4].pts[1]].x) as f32 + rg.x, (points[faces[4].pts[1]].y) as f32 + rg.y);
-        pb.line_to((points[faces[4].pts[2]].x) as f32 + rg.x, (points[faces[4].pts[2]].y) as f32 + rg.y);
-        pb.line_to((points[faces[4].pts[3]].x) as f32 + rg.x, (points[faces[4].pts[3]].y) as f32 + rg.y);
-        let path = pb.finish();
+            pb.move_to((points[faces[4].pts[0]].x) as f32 + rg.x, (points[faces[4].pts[0]].y) as f32 + rg.y);
+            pb.line_to((points[faces[4].pts[1]].x) as f32 + rg.x, (points[faces[4].pts[1]].y) as f32 + rg.y);
+            pb.line_to((points[faces[4].pts[2]].x) as f32 + rg.x, (points[faces[4].pts[2]].y) as f32 + rg.y);
+            pb.line_to((points[faces[4].pts[3]].x) as f32 + rg.x, (points[faces[4].pts[3]].y) as f32 + rg.y);
+            let path = pb.finish();
 
-        dt.fill(&path, &Source::Solid(SolidSource::from_unpremultiplied_argb(0xff, faces[4].color.r(), faces[4].color.g(), faces[4].color.b())), &DrawOptions::new());
-        window.update_with_buffer(dt.get_data(), WIDTH, HEIGHT).unwrap();
-*/
+            dt.fill(&path, &Source::Solid(SolidSource::from_unpremultiplied_argb(0xff, faces[4].color.r(), faces[4].color.g(), faces[4].color.b())), &DrawOptions::new());
+            window.update_with_buffer(dt.get_data(), WIDTH, HEIGHT).unwrap();
+    */
+    std::thread::sleep(ten_millis);
+
+        dr[0] += 0.02;
+        dr[1] += 0.04;
+        dr[2] += 0.08;
+
+
+    ca = dr[2].cos();
+    sa = dr[2].sin();
+    cb = dr[1].cos();
+    sb = dr[1].sin();
+    cg = dr[0].cos();
+    sg = dr[0].sin();
+
+
+    m = Matrix3::new(
+        ca*cb, ca*sb*sg - sa*cg, ca*sb*cg + sa*sg, 
+        sa*cb, sa*sb*sg + ca*cg, sa*sb*cg - ca*sg, 
+        -sb, cb*sg, cb*cg);
     }
 
 
 }
+

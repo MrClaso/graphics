@@ -1,4 +1,4 @@
-use std::{f64::consts::PI, time::Duration};
+use std::{f64::consts::PI, time, thread};
 use minifb::{Window, WindowOptions};
 use raqote::{DrawTarget, SolidSource, Source, DrawOptions, PathBuilder, Color};
 use nalgebra::{Matrix3, Vector3};
@@ -7,6 +7,9 @@ use nalgebra::{Matrix3, Vector3};
 const WIDTH: usize = 1000;
 const HEIGHT: usize = 1000;
 
+#[allow(non_upper_case_globals)]
+const g: f64 = 9.82;
+
 #[derive(Copy, Clone, Debug)]
 struct Face {
     color: Color,
@@ -14,8 +17,22 @@ struct Face {
 }
 
 fn main() {
-
-    let ten_millis = Duration::from_millis(20);
+//    let mut time_measure1 = [0;20];
+//    let mut time_measure2 = [0;20];
+    let time_step = 0.002;  // Time step in seconds
+    let delta_t = time::Duration::from_millis(2);
+    let side = 1.0;
+    let h:f64 = 2.0*side;
+    let min_y = 70.0; // Floor on screen
+    let max_y = 800.0;  
+    let factor = (max_y - min_y)/5.0/side;
+    let a = side/2.0*factor;
+    let scale = (HEIGHT as f64 - min_y  - (HEIGHT as f64 - max_y))/h;
+    let mut v = 0.0;
+    let mut v0 = 0.0;
+    let mut t = 0.0;
+    let mut lowest = 0.0;
+    let mut t0 = 0.0;
 
     let mut window = Window::new("Raqote", WIDTH, HEIGHT, WindowOptions {
         ..WindowOptions::default()
@@ -23,17 +40,16 @@ fn main() {
 
     let mut dt = DrawTarget::new(WIDTH as i32, HEIGHT as i32);
 
-    let a = 100.0;
 
-    let mut dr:Vec<f64> = vec![2.0, 1.2, PI/4.0];
-    let mut rg:Vector3<f64> = Vector3::new(500.0, 500.0, 0.0);
+    let mut orientation:Vec<f64> = vec![2.0, 1.2, PI/4.0];
+    let mut rg:Vector3<f64> = Vector3::new(500.0, HEIGHT as f64 - max_y, 0.0);
 
-    let mut ca:f64 = dr[2].cos();
-    let mut sa:f64 = dr[2].sin();
-    let mut cb:f64 = dr[1].cos();
-    let mut sb:f64 = dr[1].sin();
-    let mut cg:f64 = dr[0].cos();
-    let mut sg:f64 = dr[0].sin();
+    let mut ca:f64 = orientation[2].cos();
+    let mut sa:f64 = orientation[2].sin();
+    let mut cb:f64 = orientation[1].cos();
+    let mut sb:f64 = orientation[1].sin();
+    let mut cg:f64 = orientation[0].cos();
+    let mut sg:f64 = orientation[0].sin();
 
 
     let mut m:Matrix3<f64> = Matrix3::new(
@@ -75,27 +91,32 @@ fn main() {
     let mut r = Vector3::new(0.0, 0.0, 0.0);
     let mut rs: Vec<Vector3<f64>> = vec![r;8];
 
-/*     
-    for i in 0..8{
-        r = rg + m*points[i];
-        pts = rg + points[i];
-        println!("x = {}  , x = {}", pts[0], r[0]);
-        println!("y = {}  , y = {}", pts[1], r[1]);
-        println!("z = {}  , z = {}", pts[2], r[2]);    
-        println!("Hello, world!");    
-    }
-*/
+    let mut now = time::Instant::now();
+    let mut h0 = h;
 
+while t < 0.620 {
+//    loop{
 
-    loop {
-        // Find out if collision occured
-        
-    // Find "closest" corner
-        let mut index: usize = 0;
         for i in 0..8{
             r = rg + m*points[i];
             rs[i] = r;
+            if r[1] > lowest {lowest = r[1]}
         }
+
+        println!("t = {} ; v = {} ; lowest = {} ; yg = {}", t, v, lowest, rg[1]);
+        // Find out if collision occured
+        if lowest > (HEIGHT as f64 - min_y) { // The dice has hit the floor
+
+            t0 = (t*t -2.0*(lowest - (HEIGHT as f64 - min_y))/scale/g).sqrt();
+            v0 = g*t0;
+            h0 = (rg[1] + (lowest - (HEIGHT as f64 - min_y)))/scale + 0.0001;
+            println!("v0 = {} ; h0 = {} ; t0 = {}", v0, h0, t0);
+            lowest = 0.0;
+            t0 = t;
+        }
+
+    // Find "closest" corner
+        let mut index: usize = 0;
 
         let mut closest: f64 = rs[index][2];
         for i in 1..8{
@@ -104,7 +125,7 @@ fn main() {
                 index = i;
             }
         }
-    // Find closest faces. ie the faces that holds corners with index i
+    // Find closest faces. ie the faces that holds the corner with index i
         let mut corners = Vec::new();
 
         for i in 0.. 6 {
@@ -112,8 +133,11 @@ fn main() {
                 corners.push(i);
             } 
         }
-        dt.clear(SolidSource::from_unpremultiplied_argb(0xff, 0xff, 0xff, 0xff));
 
+//time_measure1[l] = now.elapsed().as_nanos();
+//now = time::Instant::now();
+
+        dt.clear(SolidSource::from_unpremultiplied_argb(0xff, 0xff, 0xff, 0xff));
         for i in 0..3{
             let mut pb = PathBuilder::new();
 
@@ -124,42 +148,41 @@ fn main() {
             }               
             let path = pb.finish();
             dt.fill(&path, &Source::Solid(SolidSource::from_unpremultiplied_argb(0xff, faces[corners[i]].color.r(), faces[corners[i]].color.g(), faces[corners[i]].color.b())), &DrawOptions::new());
-            window.update_with_buffer(dt.get_data(), WIDTH, HEIGHT).unwrap();
         }
-    /*       
-
-            let mut pb = PathBuilder::new();
-
-            pb.move_to((points[faces[4].pts[0]].x) as f32 + rg.x, (points[faces[4].pts[0]].y) as f32 + rg.y);
-            pb.line_to((points[faces[4].pts[1]].x) as f32 + rg.x, (points[faces[4].pts[1]].y) as f32 + rg.y);
-            pb.line_to((points[faces[4].pts[2]].x) as f32 + rg.x, (points[faces[4].pts[2]].y) as f32 + rg.y);
-            pb.line_to((points[faces[4].pts[3]].x) as f32 + rg.x, (points[faces[4].pts[3]].y) as f32 + rg.y);
-            let path = pb.finish();
-
-            dt.fill(&path, &Source::Solid(SolidSource::from_unpremultiplied_argb(0xff, faces[4].color.r(), faces[4].color.g(), faces[4].color.b())), &DrawOptions::new());
-            window.update_with_buffer(dt.get_data(), WIDTH, HEIGHT).unwrap();
-    */
-    std::thread::sleep(ten_millis);
-
-        dr[0] += 0.02;
-        dr[1] += 0.04;
-        dr[2] += 0.08;
+        window.update_with_buffer(dt.get_data(), WIDTH, HEIGHT).unwrap();
 
 
-    ca = dr[2].cos();
-    sa = dr[2].sin();
-    cb = dr[1].cos();
-    sb = dr[1].sin();
-    cg = dr[0].cos();
-    sg = dr[0].sin();
+//        time_measure2[l] = now.elapsed().as_micros();
+        while now.elapsed() < delta_t {};
+
+        now = time::Instant::now();
+
+        let rg_real = h0 - g*(t - t0)*(t - t0)/2.0 + v0*(t-t0);
+
+        rg[1] = HEIGHT as f64 - min_y - scale*rg_real;
+//        orientation[0] += 0.002;
+//        orientation[1] += 0.004;
+//        orientation[2] += 0.008;
 
 
-    m = Matrix3::new(
-        ca*cb, ca*sb*sg - sa*cg, ca*sb*cg + sa*sg, 
-        sa*cb, sa*sb*sg + ca*cg, sa*sb*cg - ca*sg, 
-        -sb, cb*sg, cb*cg);
+        ca = orientation[2].cos();
+        sa = orientation[2].sin();
+        cb = orientation[1].cos();
+        sb = orientation[1].sin();
+        cg = orientation[0].cos();
+        sg = orientation[0].sin();
+
+
+        m = Matrix3::new(
+            ca*cb,  ca*sb*sg - sa*cg,   ca*sb*cg + sa*sg, 
+            sa*cb,  sa*sb*sg + ca*cg,   sa*sb*cg - ca*sg, 
+            -sb,    cb*sg,              cb*cg);
+
+        t += time_step as f64;
+        v = v0 - g*(t - t0);
     }
 
+//    println!(" Beräkningar (ns) : {:?}", time_measure1);
+//    println!(" Ritande (µs) : {:?}", time_measure2);
 
 }
-
